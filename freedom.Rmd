@@ -1,0 +1,423 @@
+---
+title: "tidytuesday_stations"
+author: "Mo"
+date: "04/03/2022"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = TRUE,
+	fig.height = 5,
+	fig.width = 8,
+	message = FALSE,
+	warning = FALSE,
+	cache = TRUE,
+	cache.lazy = FALSE,
+	dpi = 180
+)
+library(tidyverse)
+library(silgelib)
+library(tvthemes)
+
+theme_set(theme_plex())
+update_geom_defaults("rect", list(fill = "midnightblue", alpha = 0.8))
+Sys.setlocale("LC_ALL","English")
+
+setwd("C:/Data Science/2022/2022_03/freedom")
+```
+
+# Explore data
+Our goal is 
+```{r}
+#tuesdata <- tidytuesdayR::tt_load('2022-02-22')
+#freedom <- tuesdata$freedom
+#write_csv(freedom,"C:/Data Science/2022/2022_03/freedom/freedom.csv")
+freedom <- read_csv("freedom.csv")
+
+freedom_df <- 
+  freedom %>% 
+  janitor::clean_names() %>%
+  mutate(status = case_when(status == "F" ~ "free",
+                            status == "NF" ~ "not free",
+                            TRUE ~ "partially free")) %>%
+  rename(civil_liberty = cl,
+         political_right = pr,
+         least_developed_country = is_ldc) %>%
+  mutate(civil_liberty = case_when(
+    civil_liberty == 1 ~ "cl_1",
+    civil_liberty == 2 ~ "cl_2",
+    civil_liberty == 3 ~ "cl_3",
+    civil_liberty == 4 ~ "cl_4",
+    civil_liberty == 5 ~ "cl_5",
+    civil_liberty == 6 ~ "cl_6",
+    TRUE ~ "cl_7"
+  )) %>%
+  mutate(political_right = case_when(
+    political_right == 1 ~ "pl_1",
+    political_right == 2 ~ "pl_2",
+    political_right == 3 ~ "pl_3",
+    political_right == 4 ~ "pl_4",
+    TRUE ~ "pl_5"
+  )) %>%
+  mutate(least_developed_country = if_else(
+    least_developed_country == 1, "least developed", "no least developed"
+  )) %>% select(-region_code)
+
+freedom_df
+```
+
+## civil liberty in general
+```{r}
+freedom_df %>% 
+  count(year, civil_liberty, sort = T) %>%
+  mutate(civil_liberty = factor(civil_liberty)) %>%
+  ggplot(aes(year, n)) +
+  geom_point(aes(col = civil_liberty), show.legend = F) +
+  geom_line(aes(col = civil_liberty), show.legend = F) +
+  facet_wrap(~civil_liberty, scales = "free_y", ncol = 2) +
+  scale_color_avatar() +
+  labs(y = "",
+       title = "Civil liberty by year")
+```
+
+We notice a spike of cl_1 in mid 2001 till 2005 and slightly stabilizes
+than a sharp plunge of cl_7 and the rest remain almost steady. 
+## political right 
+```{r}
+freedom_df %>%
+  count(year, political_right, sort = T) %>%
+  mutate(political_right = factor(political_right)) %>%
+  ggplot(aes(year, n)) +
+  geom_point(aes(col = political_right), show.legend = F) +
+  geom_line(aes(col = political_right), show.legend = F) +
+  facet_wrap(~political_right, scales = "free_y", ncol = 2) +
+  scale_color_avatar() +
+  labs(y = "",
+       title = "Political right by year")
+```
+The political rights oscillate during the years, probably  because of a lack of a major drive.
+
+## least developed country
+```{r}
+freedom_df %>%
+  select(civil_liberty, political_right, region_name,
+         status, least_developed_country) %>%
+  mutate(least_developed_country =
+           fct_infreq(least_developed_country)) %>%
+  mutate_if(is.numeric, as.character) %>%
+  pivot_longer(civil_liberty:status, names_to = "feature",
+               values_to = "value") %>%
+  ggplot(aes(y = value, fill = least_developed_country)) +
+  geom_bar(position = "fill") +
+  facet_grid(rows = vars(feature), scales = "free_y", space = "free_y") +
+  theme(legend.position = "top") +
+  scale_fill_brewer(palette = "Dark2") +
+  scale_x_continuous(expand = expansion(mult = c(0, .01)), 
+                     labels = scales::percent) +
+  labs(x = "", y = "", fill = "",
+       title = "Least developed country word wide")
+```
+We can't extract a relevant insight unless we filter across region name.
+
+## least developed country in Africa
+```{r}
+freedom_df %>%
+  filter(region_name == "Africa") %>%
+  select(civil_liberty, political_right, 
+         status, least_developed_country) %>%
+  mutate(least_developed_country = fct_infreq(least_developed_country)) %>%
+  mutate_if(is.numeric, as.character) %>%
+  pivot_longer(civil_liberty:status, names_to = "feature",
+               values_to = "value") %>%
+  ggplot(aes(y = value, fill = least_developed_country)) +
+  geom_bar(position = "fill") +
+  facet_grid(rows = vars(feature), scales = "free_y", space = "free_y") +
+  theme(legend.position = "top") +
+  scale_fill_brewer(palette = "Dark2") +
+  scale_x_continuous(expand = expansion(mult = c(0, .01)), 
+                     labels = scales::percent) +
+  labs(x = "", y = "", fill = "",
+       title = "Least developed country in Africa")
+```
+
+
+```{r}
+freedom_df %>% #count(region_name)
+  filter(region_name %in% c("Africa", "Asia")) %>%
+  group_by(region_name) %>%
+  count(year, political_right, sort = T) %>% 
+  ggplot(aes(year, n)) +
+  geom_point(aes(col = political_right)) +
+  geom_line(aes(col = political_right)) +
+  facet_grid(cols = vars(region_name),
+             rows = vars(political_right),
+             scales = "free") +
+  scale_color_avatar() +
+  labs(y = "",
+       title = "Political right comparaison between Africa and Asia") +
+  theme(legend.position = "none")
+```
+Political right in these two regions are similar which indicates that the regimes adapted are converging.
+
+## least developed country in Europe
+```{r}
+freedom_df %>% #count(region_name)
+  filter(region_name %in% c("Africa", "Asia")) %>%
+  group_by(region_name) %>%
+  count(year, political_right, sort = T) %>% 
+  ggplot(aes(year, n)) +
+  geom_point(aes(col = political_right)) +
+  geom_line(aes(col = political_right)) +
+  facet_grid(cols = vars(region_name),
+             rows = vars(political_right),
+             scales = "free") +
+  scale_color_avatar() +
+  labs(y = "",
+       title = "Political right in Africa vs Asia") +
+  theme(legend.position = "none")
+
+```
+Political right in these two regions are similar which indicates that the regimes adapted are converging.
+
+
+## Political right score by region
+```{r}
+freedom_df %>%
+  mutate(political_right = as.character(political_right)) %>%
+  ggplot(aes(y = region_name, fill = political_right)) +
+  geom_bar(position = "fill") +
+  scale_fill_brewer(palette = "Dark2") +
+  scale_x_continuous(expand = expansion(mult = c(0, .01)), 
+                     labels = scales::percent) +
+  labs(x = "", y = "", fill = "",
+       title = "Political right score by region")
+```
+
+## Status by region
+```{r}
+freedom_df %>%
+  ggplot(aes(y = region_name, fill = status)) +
+  geom_bar(position = "fill") +
+  scale_fill_brewer(palette = "Dark2") +
+  scale_x_continuous(expand = expansion(mult = c(0, .01)), 
+                     labels = scales::percent) +
+  labs(x = "", y = "", fill = "",
+       title = "Status by region")
+```
+
+# Build a model 
+Let’s start our modeling by setting up our “data budget.” We’ll stratify by our outcome status.
+```{r}
+library(tidymodels)
+
+set.seed(123)
+freedom_split <- 
+  freedom_df %>%
+  mutate(year = factor(year)) %>%
+  select(-region_name) %>%
+  initial_split(strata = status)
+freedom_train <- training(freedom_split)
+freedom_test <- testing(freedom_split)
+
+set.seed(234)
+freedom_folds <- vfold_cv(freedom_train, strata = status)
+freedom_folds
+```
+
+Next, let’s set up our feature engineering. We will need to transform character variable into dummy variables. Let’s also downsample since our dataset is imbalanced.
+```{r}
+library(themis)
+library(textrecipes)
+
+freedom_rec <-
+  recipe(status ~ ., data = freedom_train) %>%
+  update_role(country, new_role = "country") %>%
+  step_dummy(all_nominal_predictors(), one_hot = T) %>%
+  step_downsample(status)
+
+juiced <- freedom_rec %>% prep() %>% juice()
+```
+
+# multinom_reg
+Then, let’s create our model specification for a lasso model. We need to use a model specification that can handle multiclass data, in this case multinom_reg().
+```{r}
+multi_spec <-
+  multinom_reg(penalty = tune(), mixture = 1) %>%
+  set_mode("classification") %>%
+  set_engine("glmnet")
+
+multi_spec
+```
+
+Now it’s time to put the preprocessing and model together in a workflow().
+```{r}
+freedom_wf <- workflow(freedom_rec, multi_spec)
+freedom_wf
+```
+
+Since the lasso regularization penalty is a hyperparameter of the model (we can’t find the best value from fitting the model a single time), let’s tune over a grid of possible penalty parameters.
+```{r}
+freedom_grid <- grid_regular(penalty(range = c(-5, 0)), 
+                             levels = 20)
+
+doParallel::registerDoParallel()
+set.seed(2021)
+freedom_rs <-
+  tune_grid(
+    freedom_wf,
+    freedom_folds,
+    grid = freedom_grid,
+    control = control_grid(save_pred = T)
+  )
+
+freedom_rs 
+```
+
+We can look at the top results manually as well.
+```{r}
+show_best(freedom_rs)
+
+show_best(freedom_rs, metric = "accuracy") %>%
+  select(mean)
+
+autoplot(freedom_rs)
+```
+
+We have pretty interesting result
+
+Let’s use last_fit() to fit one final time to the training data and evaluate one final time on the testing data, with the numerically optimal result from freedom_rs
+```{r}
+freedom_last_fit <-
+  freedom_wf %>%
+  finalize_workflow(select_best(freedom_rs, "roc_auc")) %>%
+  last_fit(freedom_split)
+
+freedom_last_fit %>% collect_metrics()
+```
+
+How did this model perform on the testing data, that was not used in tuning/training?
+```{r}
+collect_predictions(freedom_last_fit) %>% 
+  roc_auc(status, .pred_free:'.pred_partially free')
+# 0.989
+```
+
+```{r}
+collect_predictions(freedom_last_fit) %>%
+  conf_mat(status, .pred_class) %>%
+  autoplot()
+```
+
+We can also visualize this with an ROC curve.
+```{r}
+collect_predictions(freedom_last_fit) %>%
+  roc_curve(status, .pred_free:'.pred_partially free') %>%
+  ggplot(aes(1 - specificity, sensitivity, color = .level)) +
+  geom_abline(lty = 2, color = "gray80", size = 1.5) +
+  geom_path(alpha = 0.8, size = 1.2) +
+  coord_equal() +
+  labs(color = NULL)
+```
+
+Predicting free comes at the top, still we did a great job.
+
+What features are most important for this multinom_reg model?
+```{r}
+library(vip)
+
+freedom_fit <- extract_fit_parsnip(freedom_last_fit)
+vip(freedom_fit, geom = "point", num_features = 10)
+```
+
+# Confidence interval
+
+Let’s make one exploratory plot to see how the characteristics of the commercials change over time.
+```{r}
+freedom_df <- freedom %>%
+  janitor::clean_names() %>%
+  mutate(status = case_when(status == "F" ~ 1,
+                            status == "PF" ~ 2,
+                            TRUE ~ 3)) 
+freedom_df %>%
+  select(year, cl:is_ldc) %>%
+  select(-region_name, -region_code) %>%
+  pivot_longer(cl:is_ldc) %>%
+  group_by(year, name) %>%
+  summarise(prop = mean(value)) %>%
+  ungroup() %>%
+  ggplot(aes(year, prop, color = name)) +
+  geom_line(size = 1.2, show.legend = FALSE) +
+  facet_wrap(~name, scales = "free_y") +
+  scale_y_continuous() +
+  labs(x = NULL, y = "")
+```
+
+```{r}
+simple_mod <- lm(year ~ cl + pr +
+                  is_ldc + status,
+                data = freedom_df)
+
+summary(simple_mod)
+```
+
+
+```{r}
+set.seed(123)
+freedom_intervals <- 
+  reg_intervals(year ~ cl + pr +
+                  is_ldc + status,
+                data = freedom_df,
+                type = "percentile",
+                keep_reps = TRUE
+)
+
+freedom_intervals
+```
+
+
+```{r}
+freedom_intervals %>%
+  mutate(term = fct_reorder(term, .estimate)
+  ) %>%
+  ggplot(aes(.estimate, term)) +
+  geom_vline(xintercept = 0, size = 1.5, lty = 2, color = "gray80") +
+  geom_errorbarh(aes(xmin = .lower, xmax = .upper),
+                 size = 1.5, alpha = 0.5, color = "midnightblue"
+  ) +
+  geom_point(size = 3, color = "midnightblue") +
+  labs(
+    x = "Increase in year for each characteristic",
+    y = NULL
+  )
+
+freedom_intervals %>%
+  mutate(term = fct_reorder(term, .estimate)
+  ) %>%
+  unnest(.replicates) %>%
+  ggplot(aes(estimate, fill = term)) +
+  geom_vline(xintercept = 0, size = 1.5, lty = 2,
+             color = "gray50") +
+  geom_histogram(alpha = 0.8, show.legend = FALSE) +
+  facet_wrap(vars(term))
+
+```
+
+We have evidence that freedom worldwide is witnessing
+less civil liberties, increase in least developed countries appearance, liberties are sliding to partial liberties and a good-for-nothing increase of political rights.
+Since civil rights are disappearing, we are witnessing the emergence of dictatorship rule.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
